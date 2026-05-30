@@ -38,6 +38,7 @@ bike_frames/
 output_frames/
 dataset/
 !videos/crianca_bicicleta.mp4
+output_detected.mp4
 *.avi
 *.jpg
 *.png

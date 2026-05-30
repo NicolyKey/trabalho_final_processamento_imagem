@@ -7,7 +7,7 @@ import numpy as np
 
 
 class BikeManeuverDetector:
-    def __init__(self, yolo_model='yolov8n.pt', classifier_model='trick_classifier_model.h5'):
+    def __init__(self, yolo_model='yolov8m.pt', classifier_model='trick_classifier_model.h5'):
         print("Inicializando detector de bicicletas...")
         self.bike_detector = BikeDetector(model_path=yolo_model, confidence_threshold=0.5)
         
@@ -178,7 +178,7 @@ def main():
                        help='Caminho para o vídeo de entrada')
     parser.add_argument('--output', type=str, default='output_with_tricks.mp4',
                        help='Caminho para o vídeo de saída')
-    parser.add_argument('--yolo_model', type=str, default='yolov8n.pt',
+    parser.add_argument('--yolo_model', type=str, default='yolov8m.pt',
                        help='Modelo YOLO a ser usado')
     parser.add_argument('--classifier_model', type=str, default='trick_classifier_model.h5',
                        help='Modelo de classificação de manobras')
@@ -194,8 +194,8 @@ def main():
     
     if args.mode == 'extract':
         detector = BikeDetector(model_path=args.yolo_model)
-        detector.process_video(args.video, output_dir='bike_frames')
-        detector.process_video_with_visualization(args.video, output_video_path='output_detected.mp4')
+        detector.process_video(args.video, output_dir=f'bike_frames/{args.video}')
+        detector.process_video_with_visualization(args.video, output_video_path=f'output/{args.video}')
     
     else:
         detector = BikeManeuverDetector(
