@@ -3,7 +3,6 @@ import os
 import argparse
 from bike_detector import BikeDetector
 from trick_classifier import TrickClassifier
-import numpy as np
 
 
 class BikeManeuverDetector:
@@ -11,7 +10,7 @@ class BikeManeuverDetector:
         print("Inicializando detector de bicicletas...")
         self.bike_detector = BikeDetector(model_path=yolo_model, confidence_threshold=0.5)
         
-        print("Carregando classificador de manobras...")
+        print("Carregando classificador de manobras...")    
         self.trick_classifier = TrickClassifier()
         
         if os.path.exists(classifier_model):
@@ -34,7 +33,7 @@ class BikeManeuverDetector:
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
         
-        frame_buffer = []
+        frame_buffer = {}
         frame_count = 0
         trick_detected_frames = set()
         
@@ -56,11 +55,12 @@ class BikeManeuverDetector:
                     cropped_bike = self.bike_detector.crop_bike(frame, detection['bbox'])
                     
                     if cropped_bike.size > 0:
-                        frame_buffer.append(cropped_bike)
+                        track_id = detection.get('id', 0)
+                        frame_buffer.setdefault(track_id, []).append(cropped_bike)
                         
-                        if len(frame_buffer) >= window_size:
-                            if len(frame_buffer) > window_size:
-                                frame_buffer = frame_buffer[-window_size:]
+                        if len(frame_buffer[track_id]) >= window_size:
+                            if len(frame_buffer[track_id]) > window_size:
+                                frame_buffer[track_id] = frame_buffer[track_id][-window_size:]
                             
                             if frame_count % stride == 0:
                                 prediction = self.trick_classifier.predict_sequence(
@@ -70,7 +70,7 @@ class BikeManeuverDetector:
                                 
                                 if prediction['class'] == '360' and prediction['confidence'] > 0.7:
                                     current_trick = '360'
-                                    current_confidence = prediction['confidence']
+                                    self.last_confidence = prediction['confidence']
                                     
                                     for i in range(max(0, frame_count - window_size), frame_count):
                                         trick_detected_frames.add(i)
@@ -98,8 +98,11 @@ class BikeManeuverDetector:
                 cv2.putText(annotated_frame, "MANOBRA 360 DETECTADA!", (50, 50), 
                            cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 3)
                 
-                if current_confidence > 0:
-                    cv2.putText(annotated_frame, f"Confianca: {current_confidence:.2%}", 
+                self.last_confidence = 0.0
+                self.last_confidence = prediction['confidence']
+
+                if self.last_confidence > 0:
+                    cv2.putText(annotated_frame, f"Confianca: {self.last_confidence:.2%}", 
                                (50, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
             
             out.write(annotated_frame)
@@ -193,7 +196,7 @@ def main():
     args = parser.parse_args()
     
     if args.mode == 'extract':
-        detector = BikeDetector(model_path=args.yolo_model)
+        detector = BikeDetector(model_path=args.yolo_model, confidence_threshold=0.5)
         detector.process_video(args.video, output_dir=f'bike_frames/{args.video}')
         detector.process_video_with_visualization(args.video, output_video_path=f'output/{args.video}')
     

@@ -11,7 +11,7 @@ class BikeDetector:
         self.bike_class_id = 1
         
     def detect_bikes(self, frame):
-        results = self.model(frame, verbose=False)
+        results = self.model.track(frame, persist=True, verbose=False, imgsz=1280)
         
         bike_detections = []
         
@@ -25,7 +25,8 @@ class BikeDetector:
                     x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
                     bike_detections.append({
                         'bbox': [int(x1), int(y1), int(x2), int(y2)],
-                        'confidence': confidence
+                        'confidence': confidence,
+                        'id': int(box.id[0]) if box.id is not None else 0
                     })
         
         return bike_detections
@@ -120,7 +121,7 @@ class BikeDetector:
 
 
 if __name__ == "__main__":
-    detector = BikeDetector(confidence_threshold=0.4)
+    detector = BikeDetector(confidence_threshold=0.5)
     
     video_path = "videos/crianca_bicicleta.mp4"
     
