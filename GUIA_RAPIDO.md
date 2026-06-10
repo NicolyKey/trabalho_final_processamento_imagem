@@ -13,7 +13,7 @@ pip install -r requirements.txt
 
 ### 2️⃣ Extrair Frames do Vídeo
 ```bash
-python main.py --mode extract --video videos/crianca_bicicleta.mp4
+python main.py --mode extract --video videos_treinamento/360_de_Lado_treinamento.mp4
 ```
 
 Isso vai criar a pasta `bike_frames/` com imagens das bicicletas detectadas.
