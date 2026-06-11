@@ -64,7 +64,7 @@ class BikeManeuverDetector:
                             
                             if frame_count % stride == 0:
                                 prediction = self.trick_classifier.predict_sequence(
-                                    frame_buffer, 
+                                    frame_buffer[track_id], 
                                     aggregate='average'
                                 )
                                 

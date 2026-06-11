@@ -190,7 +190,21 @@ class TrickClassifier:
             image = cv2.imread(image)
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         
+        if image.dtype != np.uint8:
+            if image.dtype == np.float32 or image.dtype == np.float64:
+                image = (image * 255).astype(np.uint8) if image.max() <= 1.0 else image.astype(np.uint8)
+            else:
+                image = image.astype(np.uint8)
+        
         image = cv2.resize(image, (self.img_width, self.img_height))
+        
+        if len(image.shape) == 2:
+            image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
+        elif image.shape[2] == 4:
+            image = cv2.cvtColor(image, cv2.COLOR_BGRA2RGB)
+        elif image.shape[2] == 1:
+            image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
+        
         image = image.astype('float32') / 255.0
         image = np.expand_dims(image, axis=0)
         

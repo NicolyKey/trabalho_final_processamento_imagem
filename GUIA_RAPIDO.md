@@ -62,7 +62,7 @@ python train_model.py --train_dir dataset/train --val_dir dataset/validation --e
 
 ### 7️⃣ Detectar Manobras
 ```bash
-python main.py --mode detect --video videos/crianca_bicicleta.mp4 --output resultado.mp4
+python main.py --mode detect --video videos/360_de_lado.mp4 --output resultado.mp4
 ```
 
 ## 🎯 Resumo do Problema
