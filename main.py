@@ -36,6 +36,7 @@ class BikeManeuverDetector:
         frame_buffer = {}
         frame_count = 0
         trick_detected_frames = set()
+        last_confidence = 0.0
         
         print(f"\nProcessando vídeo: {video_path}")
         print(f"FPS: {fps}, Resolução: {width}x{height}, Total de frames: {total_frames}")
@@ -68,12 +69,17 @@ class BikeManeuverDetector:
                                     aggregate='average'
                                 )
                                 
-                                if prediction['class'] == '360' and prediction['confidence'] > 0.7:
+                                if prediction['class'] == '360' and prediction['confidence'] > 0.6:
                                     current_trick = '360'
-                                    self.last_confidence = prediction['confidence']
-                                    
-                                    for i in range(max(0, frame_count - window_size), frame_count):
+                                    current_confidence = prediction['confidence']
+                                    last_confidence = current_confidence
+                                    trick_detected_frames.add(frame_count)
+                                    for i in range(frame_count + 1, frame_count + window_size + 1):
                                         trick_detected_frames.add(i)
+            
+            is_trick = current_trick == '360' or frame_count in trick_detected_frames
+            if is_trick and current_confidence == 0.0:
+                current_confidence = last_confidence
             
             annotated_frame = frame.copy()
             
@@ -81,29 +87,26 @@ class BikeManeuverDetector:
                 x1, y1, x2, y2 = detection['bbox']
                 confidence = detection['confidence']
                 
-                color = (0, 255, 0)
-                thickness = 2
-                
-                if frame_count in trick_detected_frames:
+                if is_trick:
                     color = (0, 0, 255)
                     thickness = 3
+                else:
+                    color = (0, 255, 0)
+                    thickness = 2
                 
                 cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), color, thickness)
                 
                 label = f"Bike: {confidence:.2f}"
+                if is_trick:
+                    label = f"360! ({current_confidence:.0%})"
                 cv2.putText(annotated_frame, label, (x1, y1 - 10), 
                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
             
-            if frame_count in trick_detected_frames:
+            if is_trick:
                 cv2.putText(annotated_frame, "MANOBRA 360 DETECTADA!", (50, 50), 
                            cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 3)
-                
-                self.last_confidence = 0.0
-                self.last_confidence = prediction['confidence']
-
-                if self.last_confidence > 0:
-                    cv2.putText(annotated_frame, f"Confianca: {self.last_confidence:.2%}", 
-                               (50, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+                cv2.putText(annotated_frame, f"Confianca: {current_confidence:.2%}", 
+                           (50, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
             
             out.write(annotated_frame)
             frame_count += 1
@@ -149,7 +152,7 @@ class BikeManeuverDetector:
                         if cropped_bike.size > 0:
                             prediction = self.trick_classifier.predict(cropped_bike)
                             
-                            if prediction['class'] == '360' and prediction['confidence'] > 0.7:
+                            if prediction['class'] == '360' and prediction['confidence'] > 0.6:
                                 trick_360_count += 1
                                 break
             

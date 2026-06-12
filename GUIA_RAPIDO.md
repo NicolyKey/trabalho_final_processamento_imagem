@@ -94,18 +94,5 @@ python prepare_dataset.py --check
 python prepare_dataset.py --test
 
 # Ver guia completo
-python prepare_dataset.py --guide
+python prepare_dataset.py --guidex
 ```
-
-## ❓ Ainda com Problemas?
-
-1. Certifique-se de que as pastas existem
-2. Certifique-se de que há imagens nas pastas
-3. Verifique se as imagens são `.jpg`, `.jpeg` ou `.png`
-4. Execute `python prepare_dataset.py --check` para diagnóstico
-
-## 📝 Nota Importante
-
-**O sistema NÃO classifica automaticamente as imagens!**
-
-Você precisa assistir ao vídeo, identificar quando a bicicleta faz um 360, e separar manualmente as imagens correspondentes. O modelo vai aprender com essas imagens que você classificou.
