@@ -1,9 +1,5 @@
 # 🚴 Guia Rápido - Detecção de Manobras de Bicicleta
 
-## ⚠️ ERRO COMUM: "Erro ao treinar o modelo"
-
-Se você recebeu um erro ao executar `python train_model.py`, é porque **o dataset está vazio**!
-
 ## ✅ Solução Passo a Passo
 
 ### 1️⃣ Instalar Dependências
@@ -64,25 +60,6 @@ python train_model.py --train_dir dataset/train --val_dir dataset/validation --e
 ```bash
 python main.py --mode detect --video videos/360_de_lado.mp4 --output resultado.mp4
 ```
-
-## 🎯 Resumo do Problema
-
-O erro acontece porque:
-- ❌ As pastas `dataset/train/normal/` e `dataset/train/360/` estão **vazias**
-- ❌ O modelo não pode treinar sem imagens
-
-A solução é:
-- ✅ Extrair frames com `--mode extract`
-- ✅ Organizar manualmente as imagens nas pastas corretas
-- ✅ Verificar com `prepare_dataset.py --check`
-- ✅ Então treinar o modelo
-
-## 📊 Requisitos Mínimos
-
-Para treinar o modelo você precisa de:
-- Pelo menos **10-20 imagens** de bicicletas normais
-- Pelo menos **10-20 imagens** de bicicletas fazendo 360
-- Imagens em formato `.jpg`, `.jpeg` ou `.png`
 
 ## 🔧 Comandos Úteis
 
