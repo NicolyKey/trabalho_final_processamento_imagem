@@ -69,7 +69,14 @@ class BikeManeuverDetector:
                                     aggregate='average'
                                 )
                                 
-                                if prediction['class'] == '360' and prediction['confidence'] > 0.6:
+                                motion_sc = prediction.get('motion_score', 0)
+                                cnn_sc = prediction.get('cnn_confidence', 0)
+                                combined = prediction['all_predictions'].get('360', 0)
+                                
+                                if frame_count % 30 == 0:
+                                    print(f"  [DEBUG] frame={frame_count} motion={motion_sc:.3f} cnn={cnn_sc:.3f} combined_360={combined:.3f}")
+                                
+                                if prediction['class'] == '360' and prediction['confidence'] > 0.5:
                                     current_trick = '360'
                                     current_confidence = prediction['confidence']
                                     last_confidence = current_confidence
@@ -103,7 +110,7 @@ class BikeManeuverDetector:
                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
             
             if is_trick:
-                cv2.putText(annotated_frame, "MANOBRA 360 DETECTADA!", (50, 50), 
+                cv2.putText(annotated_frame, "MANOBRA 360 DETECTADA", (50, 50), 
                            cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 3)
                 cv2.putText(annotated_frame, f"Confianca: {current_confidence:.2%}", 
                            (50, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
@@ -162,16 +169,7 @@ class BikeManeuverDetector:
                 print(f"Analisados {frame_count}/{total_frames} frames")
         
         cap.release()
-        
-        print("\n" + "="*50)
-        print("RESUMO DA ANÁLISE")
-        print("="*50)
-        print(f"Total de frames: {total_frames}")
-        print(f"Duração: {total_frames/fps:.2f} segundos")
-        print(f"Frames com bicicleta detectada: {bike_detected_count}")
-        print(f"Frames com manobra 360 detectada: {trick_360_count}")
-        print(f"Porcentagem de frames com bicicleta: {bike_detected_count/total_frames*100:.2f}%")
-        
+              
         if bike_detected_count > 0:
             print(f"Porcentagem de manobra 360: {trick_360_count/bike_detected_count*100:.2f}%")
         
@@ -191,9 +189,9 @@ def main():
     parser.add_argument('--mode', type=str, choices=['detect', 'analyze', 'extract'], 
                        default='detect',
                        help='Modo de operação: detect (processar vídeo), analyze (análise resumida), extract (extrair frames)')
-    parser.add_argument('--window_size', type=int, default=30,
+    parser.add_argument('--window_size', type=int, default=45,
                        help='Tamanho da janela para análise temporal')
-    parser.add_argument('--stride', type=int, default=10,
+    parser.add_argument('--stride', type=int, default=5,
                        help='Stride para análise temporal')
     
     args = parser.parse_args()

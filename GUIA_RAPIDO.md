@@ -68,15 +68,6 @@ python train_model.py --train_dir dataset/train --val_dir dataset/validation --e
 ```bash
 python main.py --mode detect --video videos/360_de_lado.mp4 --output resultado.mp4
 ```
-
-## 🧪 Testes do Modelo
-
-Durante o desenvolvimento, foram realizados diversos testes para validar o classificador de manobras:
-
-- **Separação de manobras**: Foi necessário separar manualmente os frames de bicicletas em posição normal e bicicletas executando o 360, utilizando vídeos de diferentes ângulos e fontes para garantir variedade no dataset.
-- **Ajuste de confiança**: O threshold de confiança foi ajustado de 0.7 para 0.6 após análise dos logs de predição, que mostravam que o modelo classificava corretamente os 360 mas com confiança entre 0.60 e 0.63.
-- **Ajuste no dataset**: O dataset inicial continha apenas 36 imagens, resultando em baixa acurácia. Após aumentar para 136 imagens (64 normal + 72 de 360), combinando frames de múltiplos vídeos, o modelo passou a generalizar melhor e detectar as manobras de forma consistente.
-
 ## 🔧 Comandos Úteis
 
 ```bash
