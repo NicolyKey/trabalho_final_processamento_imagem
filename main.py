@@ -8,7 +8,7 @@ from trick_classifier import TrickClassifier
 class BikeManeuverDetector:
     def __init__(self, yolo_model='yolov8m.pt', classifier_model='trick_classifier_model.h5'):
         print("Inicializando detector de bicicletas...")
-        self.bike_detector = BikeDetector(model_path=yolo_model, confidence_threshold=0.5)
+        self.bike_detector = BikeDetector(model_path=yolo_model, confidence_threshold=0.4)
         
         print("Carregando classificador de manobras...")    
         self.trick_classifier = TrickClassifier()
@@ -46,7 +46,7 @@ class BikeManeuverDetector:
             if not ret:
                 break
             
-            bike_detections = self.bike_detector.detect_bikes(frame)
+            bike_detections = self.bike_detector.detect_bikes(frame, frame_number=frame_count)
             
             current_trick = None
             current_confidence = 0.0
@@ -147,7 +147,7 @@ class BikeManeuverDetector:
             if not ret:
                 break
             
-            bike_detections = self.bike_detector.detect_bikes(frame)
+            bike_detections = self.bike_detector.detect_bikes(frame, frame_number=frame_count)
             
             if bike_detections:
                 bike_detected_count += 1
@@ -197,7 +197,7 @@ def main():
     args = parser.parse_args()
     
     if args.mode == 'extract':
-        detector = BikeDetector(model_path=args.yolo_model, confidence_threshold=0.5)
+        detector = BikeDetector(model_path=args.yolo_model, confidence_threshold=0.4)
         detector.process_video(args.video, output_dir=f'bike_frames/{args.video}')
         detector.process_video_with_visualization(args.video, output_video_path=f'output/{args.video}')
     
