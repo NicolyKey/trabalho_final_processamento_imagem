@@ -60,7 +60,7 @@ Você deve ver algo como:
 ### 6️⃣ Treinar o Modelo
 
 ```bash
-python train_model.py --train_dir dataset/train --val_dir dataset/validation --epochs 50
+python train_model.py --train_dir dataset/train --val_dir dataset/validation --epochs 100
 ```
 
 ### 7️⃣ Detectar Manobras

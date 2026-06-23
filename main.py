@@ -6,9 +6,9 @@ from trick_classifier import TrickClassifier
 
 
 class BikeManeuverDetector:
-    def __init__(self, yolo_model='yolov8m.pt', classifier_model='trick_classifier_model.h5'):
+    def __init__(self, yolo_model='yolov8l.pt', classifier_model='trick_classifier_model.h5', confidence_threshold=0.6):
         print("Inicializando detector de bicicletas...")
-        self.bike_detector = BikeDetector(model_path=yolo_model, confidence_threshold=0.5)
+        self.bike_detector = BikeDetector(model_path=yolo_model, confidence_threshold=confidence_threshold)
         
         print("Carregando classificador de manobras...")    
         self.trick_classifier = TrickClassifier()
@@ -34,6 +34,7 @@ class BikeManeuverDetector:
         out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
         
         frame_buffer = {}
+        track_history = {}
         frame_count = 0
         trick_detected_frames = set()
         last_confidence = 0.0
@@ -76,12 +77,18 @@ class BikeManeuverDetector:
                                 if frame_count % 30 == 0:
                                     print(f"  [DEBUG] frame={frame_count} motion={motion_sc:.3f} cnn={cnn_sc:.3f} combined_360={combined:.3f}")
                                 
-                                if prediction['class'] == '360' and prediction['confidence'] > 0.5:
+                                is_360 = prediction['class'] == '360' and prediction['confidence'] > 0.55
+                                track_history.setdefault(track_id, []).append(is_360)
+                                if len(track_history[track_id]) > 8:
+                                    track_history[track_id] = track_history[track_id][-8:]
+
+                                stable_360 = sum(track_history[track_id][-4:]) >= 3
+                                if stable_360:
                                     current_trick = '360'
                                     current_confidence = prediction['confidence']
                                     last_confidence = current_confidence
                                     trick_detected_frames.add(frame_count)
-                                    for i in range(frame_count + 1, frame_count + window_size + 1):
+                                    for i in range(frame_count + 1, frame_count + 15):
                                         trick_detected_frames.add(i)
             
             is_trick = current_trick == '360' or frame_count in trick_detected_frames
@@ -182,14 +189,16 @@ def main():
                        help='Caminho para o vídeo de entrada')
     parser.add_argument('--output', type=str, default='output_with_tricks.mp4',
                        help='Caminho para o vídeo de saída')
-    parser.add_argument('--yolo_model', type=str, default='yolov8m.pt',
+    parser.add_argument('--yolo_model', type=str, default='yolov8l.pt',
                        help='Modelo YOLO a ser usado')
+    parser.add_argument('--confidence', type=float, default=0.6,
+                       help='Limiar de confiança para detecção YOLO')
     parser.add_argument('--classifier_model', type=str, default='trick_classifier_model.h5',
                        help='Modelo de classificação de manobras')
     parser.add_argument('--mode', type=str, choices=['detect', 'analyze', 'extract'], 
                        default='detect',
                        help='Modo de operação: detect (processar vídeo), analyze (análise resumida), extract (extrair frames)')
-    parser.add_argument('--window_size', type=int, default=45,
+    parser.add_argument('--window_size', type=int, default=50,
                        help='Tamanho da janela para análise temporal')
     parser.add_argument('--stride', type=int, default=5,
                        help='Stride para análise temporal')
@@ -197,14 +206,15 @@ def main():
     args = parser.parse_args()
     
     if args.mode == 'extract':
-        detector = BikeDetector(model_path=args.yolo_model, confidence_threshold=0.5)
+        detector = BikeDetector(model_path=args.yolo_model, confidence_threshold=args.confidence)
         detector.process_video(args.video, output_dir=f'bike_frames/{args.video}')
         detector.process_video_with_visualization(args.video, output_video_path=f'output/{args.video}')
     
     else:
         detector = BikeManeuverDetector(
             yolo_model=args.yolo_model,
-            classifier_model=args.classifier_model
+            classifier_model=args.classifier_model,
+            confidence_threshold=args.confidence
         )
         
         if args.mode == 'detect':

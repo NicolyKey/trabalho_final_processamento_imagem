@@ -5,13 +5,36 @@ import os
 
 
 class BikeDetector:
-    def __init__(self, model_path='yolov8m.pt', confidence_threshold=0.5):
+    def __init__(self, model_path='yolov8l.pt', confidence_threshold=0.6):
         self.model = YOLO(model_path)
         self.confidence_threshold = confidence_threshold
         self.bike_class_id = 1
         
+    def preprocess_frame(self, frame):
+        lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        l = clahe.apply(l)
+        lab = cv2.merge((l, a, b))
+        frame = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+
+        gamma = 1.1
+        inv_gamma = 1.0 / gamma
+        table = np.array([((i / 255.0) ** inv_gamma) * 255 for i in np.arange(256)]).astype('uint8')
+        return cv2.LUT(frame, table)
+
     def detect_bikes(self, frame):
-        results = self.model.track(frame, persist=True, verbose=False, imgsz=1280)
+        frame = self.preprocess_frame(frame)
+        results = self.model.track(
+            frame,
+            persist=True,
+            verbose=False,
+            imgsz=1280,
+            conf=self.confidence_threshold,
+            iou=0.45,
+            max_det=20,
+            tracker='bytetrack.yaml'
+        )
         
         bike_detections = []
         
@@ -23,6 +46,15 @@ class BikeDetector:
                 
                 if class_id == self.bike_class_id and confidence >= self.confidence_threshold:
                     x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
+                    width = x2 - x1
+                    height = y2 - y1
+                    aspect_ratio = width / height if height > 0 else 0
+
+                    if width < 64 or height < 64:
+                        continue
+                    if aspect_ratio < 0.35 or aspect_ratio > 3.0:
+                        continue
+
                     bike_detections.append({
                         'bbox': [int(x1), int(y1), int(x2), int(y2)],
                         'confidence': confidence,
@@ -33,6 +65,8 @@ class BikeDetector:
     
     def crop_bike(self, frame, bbox):
         x1, y1, x2, y2 = bbox
+        if x2 - x1 < 64 or y2 - y1 < 64:
+            return np.array([])
         cropped = frame[y1:y2, x1:x2]
         return cropped
     
@@ -121,7 +155,7 @@ class BikeDetector:
 
 
 if __name__ == "__main__":
-    detector = BikeDetector(confidence_threshold=0.5)
+    detector = BikeDetector(confidence_threshold=0.6)
     
     video_path = "videos/crianca_bicicleta.mp4"
     

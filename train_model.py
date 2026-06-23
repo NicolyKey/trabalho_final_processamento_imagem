@@ -31,13 +31,16 @@ def train_classifier(train_dir, val_dir=None, epochs=50, batch_size=32, use_tran
     print(f"Transfer Learning: {use_transfer_learning}")
     
     classifier = TrickClassifier(img_height=224, img_width=224, num_classes=2)
-    
+
+    class_weight = {0: 1.0, 1: 2.0}  # ← adiciona aqui
+
     history = classifier.train(
         train_dir=train_dir,
         validation_dir=val_dir,
         epochs=epochs,
         batch_size=batch_size,
-        use_transfer_learning=use_transfer_learning
+        use_transfer_learning=use_transfer_learning,
+        class_weight=class_weight 
     )
     
     classifier.save_model('trick_classifier_model.h5')
@@ -56,9 +59,9 @@ if __name__ == "__main__":
                        help='Diretório com dados de treinamento')
     parser.add_argument('--val_dir', type=str, default='dataset/validation',
                        help='Diretório com dados de validação')
-    parser.add_argument('--epochs', type=int, default=50,
+    parser.add_argument('--epochs', type=int, default=100,
                        help='Número de épocas de treinamento')
-    parser.add_argument('--batch_size', type=int, default=32,
+    parser.add_argument('--batch_size', type=int, default=16,
                        help='Tamanho do batch')
     parser.add_argument('--no_transfer_learning', action='store_true',
                        help='Não usar transfer learning (treinar CNN do zero)')

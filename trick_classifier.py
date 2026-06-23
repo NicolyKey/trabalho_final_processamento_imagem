@@ -22,7 +22,10 @@ class TrickClassifier:
             weights='imagenet'
         )
         
-        base_model.trainable = False
+        base_model.trainable = True
+        for layer in base_model.layers[:-30]:
+            layer.trainable = False
+        self.base_model = base_model
         
         self.model = keras.Sequential([
             layers.Input(shape=(self.img_height, self.img_width, 3)),
@@ -36,7 +39,7 @@ class TrickClassifier:
         ])
         
         self.model.compile(
-            optimizer=keras.optimizers.Adam(learning_rate=0.001),
+            optimizer=keras.optimizers.Adam(learning_rate=0.0001),
             loss='categorical_crossentropy',
             metrics=['accuracy']
         )
@@ -79,7 +82,7 @@ class TrickClassifier:
         
         return self.model
     
-    def train(self, train_dir, validation_dir=None, epochs=50, batch_size=32, use_transfer_learning=True):
+    def train(self, train_dir, validation_dir=None, epochs=50, batch_size=32, use_transfer_learning=True, class_weight=None):
         if not os.path.exists(train_dir):
             raise ValueError(f"Diretório de treinamento não encontrado: {train_dir}")
         
@@ -102,13 +105,17 @@ class TrickClassifier:
         else:
             self.build_cnn_model()
         
+        rescale_value = None if use_transfer_learning else 1./255
         train_datagen = ImageDataGenerator(
-            rescale=1./255,
-            rotation_range=20,
-            width_shift_range=0.2,
-            height_shift_range=0.2,
+            rescale=rescale_value,
+            rotation_range=30,
+            width_shift_range=0.3,
+            height_shift_range=0.3,
+            shear_range=0.15,
+            zoom_range=0.3,
+            brightness_range=[0.7, 1.3],
+            channel_shift_range=15,
             horizontal_flip=True,
-            zoom_range=0.2,
             fill_mode='nearest'
         )
         
@@ -144,7 +151,7 @@ class TrickClassifier:
         ]
         
         if validation_dir:
-            val_datagen = ImageDataGenerator(rescale=1./255)
+            val_datagen = ImageDataGenerator(rescale=rescale_value)
             validation_generator = val_datagen.flow_from_directory(
                 validation_dir,
                 target_size=(self.img_height, self.img_width),
@@ -156,12 +163,14 @@ class TrickClassifier:
                 train_generator,
                 epochs=epochs,
                 validation_data=validation_generator,
+                class_weight=class_weight,
                 callbacks=callbacks
             )
         else:
             history = self.model.fit(
                 train_generator,
                 epochs=epochs,
+                class_weight=class_weight,
                 callbacks=callbacks
             )
         
@@ -355,7 +364,7 @@ class TrickClassifier:
         
         cnn_360_conf = cnn_result['all_predictions'].get('360', 0.0)
         
-        combined_360 = (cnn_360_conf * 0.4) + (motion_score * 0.6)
+        combined_360 = (cnn_360_conf * 0.65) + (motion_score * 0.35)
         combined_normal = 1.0 - combined_360
         
         if combined_360 > 0.5:
