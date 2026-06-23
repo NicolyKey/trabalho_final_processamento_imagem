@@ -9,100 +9,138 @@ class BikeDetector:
         self.model = YOLO(model_path)
         self.confidence_threshold = confidence_threshold
         self.bike_class_id = 1
-        self.track_history = {}
+        self.track_history = {}      # track_id -> lista de detecções REAIS {'frame','bbox','confidence'}
+        self.last_seen = {}          # track_id -> último frame com detecção REAL
         self.max_frames_missing = 5
-        
+        self.max_history = 30        # limite de detecções guardadas por track
+
     def detect_bikes(self, frame, frame_number=0):
         results = self.model.track(
-            frame, 
-            persist=True, 
-            verbose=False, 
+            frame,
+            persist=True,
+            verbose=False,
             imgsz=1280,
             conf=self.confidence_threshold,
             iou=0.5,
             tracker='bytetrack.yaml'
         )
-        
+
+        height, width = frame.shape[:2]
         bike_detections = []
         current_frame_ids = set()
-        
+
         for result in results:
             boxes = result.boxes
             for box in boxes:
                 class_id = int(box.cls[0])
                 confidence = float(box.conf[0])
-                
+
                 if class_id == self.bike_class_id and confidence >= self.confidence_threshold:
+                    # Sem track id confirmado ainda: ignorar para não fundir bikes
+                    # distintas no id 0 (corromperia histórico, interpolação e buffer do LSTM)
+                    if box.id is None:
+                        continue
+
                     x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
-                    track_id = int(box.id[0]) if box.id is not None else 0
-                    
+                    track_id = int(box.id[0])
+
                     bbox = [int(x1), int(y1), int(x2), int(y2)]
-                    
+
                     bike_detections.append({
                         'bbox': bbox,
                         'confidence': confidence,
-                        'id': track_id
+                        'id': track_id,
+                        'interpolated': False
                     })
-                    
+
                     current_frame_ids.add(track_id)
-                    
-                    if track_id not in self.track_history:
-                        self.track_history[track_id] = []
-                    
-                    self.track_history[track_id].append({
+
+                    self.track_history.setdefault(track_id, []).append({
                         'frame': frame_number,
                         'bbox': bbox,
                         'confidence': confidence
                     })
-        
-        interpolated_detections = self._interpolate_missing_tracks(frame_number, current_frame_ids)
+                    if len(self.track_history[track_id]) > self.max_history:
+                        self.track_history[track_id] = self.track_history[track_id][-self.max_history:]
+
+                    self.last_seen[track_id] = frame_number
+
+        interpolated_detections = self._interpolate_missing_tracks(
+            frame_number, current_frame_ids, (height, width)
+        )
         bike_detections.extend(interpolated_detections)
-        
+
+        self._prune_dead_tracks(frame_number)
+
         return bike_detections
-    
-    def _interpolate_missing_tracks(self, current_frame, detected_ids):
+
+    def _interpolate_missing_tracks(self, current_frame, detected_ids, frame_shape):
         interpolated = []
-        
+        height, width = frame_shape
+
         for track_id, history in self.track_history.items():
             if track_id in detected_ids:
                 continue
-            
+
             if len(history) < 2:
                 continue
-            
-            last_detection = history[-1]
-            frames_missing = current_frame - last_detection['frame']
-            
-            if frames_missing > 0 and frames_missing <= self.max_frames_missing:
-                if len(history) >= 2:
-                    prev_detection = history[-2]
-                    
-                    dx = (last_detection['bbox'][0] - prev_detection['bbox'][0]) / (last_detection['frame'] - prev_detection['frame'] + 1e-6)
-                    dy = (last_detection['bbox'][1] - prev_detection['bbox'][1]) / (last_detection['frame'] - prev_detection['frame'] + 1e-6)
-                    dw = (last_detection['bbox'][2] - prev_detection['bbox'][2]) / (last_detection['frame'] - prev_detection['frame'] + 1e-6)
-                    dh = (last_detection['bbox'][3] - prev_detection['bbox'][3]) / (last_detection['frame'] - prev_detection['frame'] + 1e-6)
-                    
-                    new_x1 = int(last_detection['bbox'][0] + dx * frames_missing)
-                    new_y1 = int(last_detection['bbox'][1] + dy * frames_missing)
-                    new_x2 = int(last_detection['bbox'][2] + dw * frames_missing)
-                    new_y2 = int(last_detection['bbox'][3] + dh * frames_missing)
-                    
-                    interpolated_bbox = [new_x1, new_y1, new_x2, new_y2]
-                    
-                    interpolated.append({
-                        'bbox': interpolated_bbox,
-                        'confidence': max(0.3, last_detection['confidence'] - 0.1 * frames_missing),
-                        'id': track_id,
-                        'interpolated': True
-                    })
-                    
-                    self.track_history[track_id].append({
-                        'frame': current_frame,
-                        'bbox': interpolated_bbox,
-                        'confidence': interpolated[-1]['confidence']
-                    })
-        
+
+            # frames_missing é medido a partir da última detecção REAL.
+            # Como detecções interpoladas NÃO entram no histórico, esse contador
+            # cresce a cada frame ausente e o teto max_frames_missing realmente dispara.
+            last_real = history[-1]
+            frames_missing = current_frame - self.last_seen.get(track_id, last_real['frame'])
+
+            if not (0 < frames_missing <= self.max_frames_missing):
+                continue
+
+            prev_detection = history[-2]
+            # Guarda contra dt~0 (duas detecções no mesmo frame): velocidade explodiria
+            if last_real['frame'] == prev_detection['frame']:
+                continue
+            dt = float(last_real['frame'] - prev_detection['frame'])
+            dx = (last_real['bbox'][0] - prev_detection['bbox'][0]) / dt
+            dy = (last_real['bbox'][1] - prev_detection['bbox'][1]) / dt
+            dw = (last_real['bbox'][2] - prev_detection['bbox'][2]) / dt
+            dh = (last_real['bbox'][3] - prev_detection['bbox'][3]) / dt
+
+            new_x1 = int(last_real['bbox'][0] + dx * frames_missing)
+            new_y1 = int(last_real['bbox'][1] + dy * frames_missing)
+            new_x2 = int(last_real['bbox'][2] + dw * frames_missing)
+            new_y2 = int(last_real['bbox'][3] + dh * frames_missing)
+
+            # Manter a box dentro do frame
+            new_x1 = max(0, min(new_x1, width - 1))
+            new_x2 = max(0, min(new_x2, width - 1))
+            new_y1 = max(0, min(new_y1, height - 1))
+            new_y2 = max(0, min(new_y2, height - 1))
+
+            # Descartar boxes degeneradas (a bike já saiu do frame)
+            if new_x2 - new_x1 < 5 or new_y2 - new_y1 < 5:
+                continue
+
+            interpolated.append({
+                'bbox': [new_x1, new_y1, new_x2, new_y2],
+                'confidence': max(0.3, last_real['confidence'] - 0.1 * frames_missing),
+                'id': track_id,
+                'interpolated': True
+            })
+
         return interpolated
+
+    def _prune_dead_tracks(self, current_frame):
+        """Remove tracks que sumiram há mais que max_frames_missing frames.
+
+        Sem isso, históricos antigos se acumulam e o tracker continua tentando
+        interpolar boxes-fantasma que já saíram de cena.
+        """
+        dead_ids = [
+            track_id for track_id, last_frame in self.last_seen.items()
+            if current_frame - last_frame > self.max_frames_missing
+        ]
+        for track_id in dead_ids:
+            self.track_history.pop(track_id, None)
+            self.last_seen.pop(track_id, None)
     
     def crop_bike(self, frame, bbox):
         x1, y1, x2, y2 = bbox

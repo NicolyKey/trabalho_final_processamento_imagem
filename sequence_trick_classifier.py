@@ -66,7 +66,10 @@ class SequenceTrickClassifier:
         
         self.model = keras.Sequential([
             layers.Input(shape=(self.sequence_length, self.img_height, self.img_width, 3)),
-            
+
+            # Normaliza [0,255] -> [0,1] (entrada chega em [0,255], igual ao cnn_lstm)
+            layers.Rescaling(1./255),
+
             # Primeira camada Conv3D
             layers.Conv3D(32, (3, 3, 3), activation='relu', padding='same'),
             layers.MaxPooling3D((2, 2, 2)),
@@ -99,25 +102,28 @@ class SequenceTrickClassifier:
         
         return self.model
     
-    def train(self, sequences_360_train, normal_images_train, 
-              sequences_360_val=None, normal_images_val=None,
-              epochs=50, batch_size=8, model_type='cnn_lstm'):
+    def train(self, sequences_360_train, normal_images_train, normal_sequences_train=None,
+              sequences_360_val=None, normal_images_val=None, normal_sequences_val=None,
+              epochs=50, batch_size=8, model_type='cnn_lstm', oversample=2):
         """
         Treina o classificador de sequências.
-        
+
         Args:
             sequences_360_train: Diretório com sequências de 360 para treino
             normal_images_train: Diretório com imagens normais para treino
+            normal_sequences_train: Diretório com sequências reais de normal para treino
             sequences_360_val: Diretório com sequências de 360 para validação
             normal_images_val: Diretório com imagens normais para validação
+            normal_sequences_val: Diretório com sequências reais de normal para validação
             epochs: Número de épocas
             batch_size: Tamanho do batch
             model_type: 'cnn_lstm' ou 'conv3d'
         """
-        
+
         print(f"Iniciando treinamento com modelo {model_type}...")
         print(f"Sequências 360 treino: {sequences_360_train}")
         print(f"Imagens normais treino: {normal_images_train}")
+        print(f"Sequências normais treino: {normal_sequences_train}")
         
         # Construir modelo
         if model_type == 'cnn_lstm':
@@ -134,25 +140,29 @@ class SequenceTrickClassifier:
         train_generator = SequenceDataGenerator(
             sequences_360_dir=sequences_360_train,
             normal_images_dir=normal_images_train,
+            normal_sequences_dir=normal_sequences_train,
             batch_size=batch_size,
             img_height=self.img_height,
             img_width=self.img_width,
             sequence_length=self.sequence_length,
             shuffle=True,
-            augment=True
+            augment=True,
+            oversample=oversample
         )
-        
+
         validation_generator = None
-        if sequences_360_val and normal_images_val:
+        if sequences_360_val and (normal_images_val or normal_sequences_val):
             validation_generator = SequenceDataGenerator(
                 sequences_360_dir=sequences_360_val,
                 normal_images_dir=normal_images_val,
+                normal_sequences_dir=normal_sequences_val,
                 batch_size=batch_size,
                 img_height=self.img_height,
                 img_width=self.img_width,
                 sequence_length=self.sequence_length,
                 shuffle=False,
-                augment=False
+                augment=False,
+                oversample=oversample
             )
         
         # Callbacks
@@ -262,9 +272,11 @@ class SequenceTrickClassifier:
             
             # Redimensionar
             img = cv2.resize(img, (self.img_width, self.img_height))
-            
-            # Normalizar
-            img = img.astype(np.float32) / 255.0
+
+            # Manter [0,255]: a normalização para [-1,1] é feita pela camada
+            # Rescaling do modelo. Dividir por 255 aqui causaria dupla
+            # normalização (mesmo bug do treino) e predições no chute.
+            img = img.astype(np.float32)
             processed_sequence.append(img)
         
         # Adicionar dimensão do batch
