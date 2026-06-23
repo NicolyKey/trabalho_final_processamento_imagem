@@ -59,9 +59,59 @@ Você deve ver algo como:
 
 ### 6️⃣ Treinar o Modelo
 
+#### Opção A: Modelo de Imagens Individuais (Original)
+
 ```bash
 python train_model.py --train_dir dataset/train --val_dir dataset/validation --epochs 50
 ```
+
+#### Opção B: Modelo de Sequências (Recomendado para 360)
+
+Para treinar com sequências de frames (melhor para detectar movimento):
+
+```bash
+python train_sequence_model.py
+```
+
+**Parâmetros disponíveis:**
+
+```bash
+python train_sequence_model.py \
+  --sequences_360_train sequences_dataset/360 \
+  --normal_train dataset/train/normal \
+  --normal_val dataset/validation/normal \
+  --epochs 50 \
+  --batch_size 8 \
+  --sequence_length 15 \
+  --model_type cnn_lstm
+```
+
+**Opções:**
+- `--sequences_360_train`: Pasta com subpastas de sequências de 360 (padrão: `sequences_dataset/360`)
+- `--normal_train`: Pasta com imagens normais para treino
+- `--sequences_360_val`: Sequências de 360 para validação (opcional)
+- `--normal_val`: Imagens normais para validação
+- `--epochs`: Número de épocas (padrão: 50)
+- `--batch_size`: Tamanho do batch (padrão: 8)
+- `--sequence_length`: Número de frames por sequência (padrão: 15)
+- `--model_type`: `cnn_lstm` (CNN+LSTM) ou `conv3d` (Convolução 3D)
+
+**Estrutura esperada do sequences_dataset:**
+```
+sequences_dataset/
+└── 360/
+    ├── sequence_001/
+    │   ├── frame_0001.jpg
+    │   ├── frame_0002.jpg
+    │   └── ...
+    ├── sequence_002/
+    │   └── ...
+    └── ...
+```
+
+**Modelos salvos:**
+- `sequence_trick_classifier_cnn_lstm.h5` ou `sequence_trick_classifier_conv3d.h5`
+- `best_sequence_trick_model.h5` (melhor modelo durante treino)
 
 ### 7️⃣ Detectar Manobras
 
