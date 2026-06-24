@@ -35,6 +35,8 @@ wheels/
 
 # Dados e outputs
 bike_frames/
+sequences_dataset/
+resultaddos/
 output_frames/
 !videos/crianca_bicicleta.mp4
 output_detected.mp4
