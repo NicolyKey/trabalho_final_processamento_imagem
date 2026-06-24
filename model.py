@@ -1,0 +1,111 @@
+"""
+Arquitetura do classificador de manobras: CNN-LSTM.
+
+A rede tem duas partes:
+
+  1. Extrator de features (CNN) - MobileNetV2 pre-treinada na ImageNet, CONGELADA.
+     Recebe um frame (recorte da bike) e devolve um vetor de 1280 caracteristicas
+     espaciais. Como esta congelada (transfer learning), as features de cada frame
+     sao fixas -> podem ser pre-computadas uma unica vez no treino (muito mais rapido).
+
+  2. Cabeca temporal (LSTM) - recebe a SEQUENCIA de vetores de features dos
+     SEQ_LEN frames e modela a dinamica temporal (a rotacao do 360), classificando
+     em "360" vs "normal".
+
+No treino, treinamos so a cabeca temporal sobre as features pre-computadas.
+Para a inferencia, remontamos o MODELO COMPLETO end-to-end (frames -> classe)
+reaproveitando os MESMOS objetos de camada, de modo que os pesos treinados da
+cabeca sao preservados automaticamente.
+
+    frames (SEQ_LEN, IMG, IMG, 3)
+        -> TimeDistributed(MobileNetV2)  -> (SEQ_LEN, 1280)
+        -> LSTM -> Dense -> softmax      -> probabilidade por classe
+"""
+from tensorflow.keras import layers, models, regularizers
+from tensorflow.keras.applications import MobileNetV2
+
+from config import SEQ_LEN, IMG_SIZE, CHANNELS, CLASSES
+from motion_features import MOTION_DIM
+
+FEATURE_DIM = 1280  # dimensao de saida do MobileNetV2 com pooling='avg'
+
+
+def build_feature_extractor(img_size=IMG_SIZE, channels=CHANNELS):
+    """
+    Extrator CNN por frame (MobileNetV2 congelada).
+
+    Inclui o pre-processamento (pixels [0,255] -> [-1,1]) como camada Rescaling,
+    para que a entrada sejam frames crus (uint8/float em [0,255]).
+    """
+    backbone = MobileNetV2(
+        input_shape=(img_size, img_size, channels),
+        include_top=False,
+        weights="imagenet",
+        pooling="avg",
+    )
+    backbone.trainable = False
+
+    inp = layers.Input(shape=(img_size, img_size, channels))
+    x = layers.Rescaling(1.0 / 127.5, offset=-1.0)(inp)
+    out = backbone(x, training=False)
+    return models.Model(inp, out, name="mobilenetv2_features")
+
+
+def build_temporal_head(seq_len=SEQ_LEN, feat_dim=FEATURE_DIM,
+                        motion_dim=MOTION_DIM, n_classes=len(CLASSES)):
+    """
+    Cabeca temporal de DUAS ENTRADAS: aparencia (CNN) + movimento (fluxo optico).
+
+      aparencia (seq_len, 1280) --TimeDistributed Dense--> (seq_len, 64)
+      movimento (seq_len, MOTION_DIM) --TimeDistributed Dense--> (seq_len, 16)
+                         \\                              /
+                          concat -> (seq_len, 80) -> LSTM -> Dense -> softmax
+
+    Fortemente regularizada de proposito (poucas sequencias independentes):
+    projecoes dimensionais, LSTM pequena (32) com dropout recorrente, dropout
+    alto e regularizacao L2.
+    """
+    reg = regularizers.l2(1e-4)
+    app_in = layers.Input(shape=(seq_len, feat_dim), name="appearance")
+    mot_in = layers.Input(shape=(seq_len, motion_dim), name="motion")
+
+    a = layers.Dropout(0.5)(app_in)
+    a = layers.TimeDistributed(
+        layers.Dense(64, activation="relu", kernel_regularizer=reg))(a)
+    # Normaliza os descritores de movimento (adaptado no treino; ver train.py).
+    m = layers.Normalization(axis=-1, name="motion_norm")(mot_in)
+    m = layers.TimeDistributed(
+        layers.Dense(16, activation="relu", kernel_regularizer=reg))(m)
+
+    x = layers.Concatenate()([a, m])
+    x = layers.Dropout(0.5)(x)
+    x = layers.LSTM(32, return_sequences=False,
+                    dropout=0.3, recurrent_dropout=0.3,
+                    kernel_regularizer=reg, recurrent_regularizer=reg)(x)
+    x = layers.Dropout(0.5)(x)
+    out = layers.Dense(n_classes, activation="softmax", kernel_regularizer=reg)(x)
+    return models.Model([app_in, mot_in], out, name="temporal_head")
+
+
+def build_full_model(feature_extractor, temporal_head,
+                     seq_len=SEQ_LEN, img_size=IMG_SIZE, channels=CHANNELS,
+                     motion_dim=MOTION_DIM):
+    """
+    Modelo completo end-to-end para inferencia: (frames, movimento) -> classe.
+
+    Reaproveita os MESMOS objetos `feature_extractor` e `temporal_head` passados,
+    preservando seus pesos (em especial os pesos treinados da cabeca).
+    """
+    frames_in = layers.Input(shape=(seq_len, img_size, img_size, channels),
+                             name="frames")
+    motion_in = layers.Input(shape=(seq_len, motion_dim), name="motion")
+    app = layers.TimeDistributed(feature_extractor)(frames_in)  # (seq_len, FEATURE_DIM)
+    out = temporal_head([app, motion_in])
+    return models.Model([frames_in, motion_in], out, name="bike_trick_cnn_lstm")
+
+
+if __name__ == "__main__":
+    fe = build_feature_extractor()
+    head = build_temporal_head()
+    full = build_full_model(fe, head)
+    full.summary()

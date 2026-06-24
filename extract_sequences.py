@@ -1,174 +1,139 @@
-"""Extrai sequências de crops de bicicleta a partir de vídeos brutos.
+"""
+Extracao de sequencias de frames a partir dos videos brutos (videos/).
 
-Para a classe 360, faz AUTO-RECORTE: dentro do track, localiza o trecho de
-maior mudança visual (a rotação) e salva SÓ esse núcleo como sequência de 360.
-Os frames de aproximação/saída (a bike só pedalando) viram NEGATIVOS (classe
-normal) — hard negatives no mesmo contexto, que ensinam o modelo a não marcar
-pedalada como 360.
+Usa OpenCV para ler o video e YOLO (ultralytics) para detectar e recortar a
+bicicleta em cada frame. Cada video vira UMA sequencia de frames recortados,
+salva em sequences_dataset/<classe>/<nome_do_video>_seqNNN/.
 
-Para a classe normal, fatia o track inteiro em janelas.
+A classe e inferida pelo nome do arquivo: se contiver "360" -> classe "360",
+caso contrario -> classe "normal".
 
 Uso:
-  python extract_sequences.py --label 360 --videos videos/360_de_frente.mp4 ...
-  python extract_sequences.py --label normal --videos videos/andando_normal_de_lado.mp4 ...
+    python extract_sequences.py                 # processa todos os videos de videos/
+    python extract_sequences.py 360_estavel.mp4 # processa apenas um video
 """
+import sys
 import cv2
-import os
-import argparse
-import numpy as np
-from bike_detector import BikeDetector
+
+from config import (
+    VIDEOS_DIR, SEQUENCES_DIR, IMG_SIZE, YOLO_WEIGHTS, YOLO_CONF,
+    COCO_BICYCLE, COCO_PERSON, CROP_MARGIN,
+)
 
 
-def _collect_track_crops(video_path, yolo_model, max_frames):
-    detector = BikeDetector(model_path=yolo_model, confidence_threshold=0.4)
-    cap = cv2.VideoCapture(video_path)
-    track_crops = {}
-    frame_count = 0
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret or (max_frames and frame_count >= max_frames):
+def class_for_video(name: str) -> str:
+    """Define a classe da sequencia a partir do nome do arquivo de video."""
+    return "360" if "360" in name.lower() else "normal"
+
+
+def best_detection(result):
+    """
+    Escolhe a melhor deteccao de um frame.
+
+    Prioriza a bicicleta de maior confianca; se nenhuma bicicleta for detectada,
+    cai de volta para a pessoa (ciclista) de maior confianca.
+    """
+    boxes = result.boxes
+    if boxes is None or len(boxes) == 0:
+        return None
+
+    best_bike = None
+    best_bike_conf = -1.0
+    best_person = None
+    best_person_conf = -1.0
+
+    for i in range(len(boxes)):
+        cls = int(boxes.cls[i].item())
+        conf = float(boxes.conf[i].item())
+        xyxy = boxes.xyxy[i].tolist()
+        if cls == COCO_BICYCLE and conf > best_bike_conf:
+            best_bike_conf, best_bike = conf, xyxy
+        elif cls == COCO_PERSON and conf > best_person_conf:
+            best_person_conf, best_person = conf, xyxy
+
+    return best_bike if best_bike is not None else best_person
+
+
+def crop_with_margin(frame, box):
+    """Recorta o frame na bbox com uma margem extra, respeitando os limites."""
+    h, w = frame.shape[:2]
+    x1, y1, x2, y2 = box
+    bw, bh = x2 - x1, y2 - y1
+    x1 = max(0, int(x1 - bw * CROP_MARGIN))
+    y1 = max(0, int(y1 - bh * CROP_MARGIN))
+    x2 = min(w, int(x2 + bw * CROP_MARGIN))
+    y2 = min(h, int(y2 + bh * CROP_MARGIN))
+    if x2 <= x1 or y2 <= y1:
+        return None
+    return frame[y1:y2, x1:x2]
+
+
+def next_seq_index(class_dir, video_stem) -> int:
+    """Proximo indice de sequencia disponivel para um dado video/classe."""
+    idx = 1
+    while (class_dir / f"{video_stem}_seq{idx:03d}").exists():
+        idx += 1
+    return idx
+
+
+def extract_video(model, video_path):
+    cls = class_for_video(video_path.name)
+    class_dir = SEQUENCES_DIR / cls
+    class_dir.mkdir(parents=True, exist_ok=True)
+    seq_idx = next_seq_index(class_dir, video_path.stem)
+    out_dir = class_dir / f"{video_path.stem}_seq{seq_idx:03d}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    cap = cv2.VideoCapture(str(video_path))
+    if not cap.isOpened():
+        print(f"  [erro] nao consegui abrir {video_path}")
+        return 0
+
+    saved = 0
+    frame_idx = 0
+    while True:
+        ok, frame = cap.read()
+        if not ok:
             break
-        for d in detector.detect_bikes(frame, frame_number=frame_count):
-            if d.get('interpolated', False):
-                continue
-            crop = detector.crop_bike(frame, d['bbox'])
-            if crop.size == 0:
-                continue
-            track_crops.setdefault(d['id'], []).append(crop)
-        frame_count += 1
+
+        results = model.predict(frame, conf=YOLO_CONF, verbose=False)
+        box = best_detection(results[0])
+        if box is not None:
+            crop = crop_with_margin(frame, box)
+            if crop is not None and crop.size > 0:
+                crop = cv2.resize(crop, (IMG_SIZE, IMG_SIZE))
+                out_path = out_dir / f"bike_frame_{frame_idx:06d}_det_0.jpg"
+                cv2.imwrite(str(out_path), crop)
+                saved += 1
+        frame_idx += 1
+
     cap.release()
-    return track_crops, frame_count
-
-
-def _motion_signal(crops):
-    """Mudança visual frame-a-frame do conteúdo do crop (rotação => alta)."""
-    small = []
-    for c in crops:
-        g = cv2.cvtColor(cv2.resize(c, (64, 64)), cv2.COLOR_BGR2GRAY).astype(np.float32)
-        small.append(g)
-    motion = [0.0]
-    for i in range(1, len(small)):
-        motion.append(float(np.mean(np.abs(small[i] - small[i - 1]))) / 255.0)
-    if len(motion) > 1:
-        motion[0] = motion[1]
-    return np.array(motion)
-
-
-def _find_core(crops, core_len):
-    """Janela contígua de maior movimento acumulado (o giro)."""
-    motion = _motion_signal(crops)
-    n = len(motion)
-    L = min(core_len, n)
-    if L >= n:
-        return 0, n
-    sums = np.convolve(motion, np.ones(L), mode='valid')
-    start = int(np.argmax(sums))
-    return start, start + L
-
-
-def _slice_windows(crops, window, stride, min_frames):
-    if len(crops) < min_frames:
-        return []
-    if len(crops) <= window:
-        return [crops]
-    windows = []
-    i = 0
-    while i + min_frames <= len(crops):
-        windows.append(crops[i:i + window])
-        i += stride
-    return windows
-
-
-def _save_windows(windows, out_dir, prefix, start_idx, min_frames):
-    os.makedirs(out_dir, exist_ok=True)
-    count = 0
-    for w in windows:
-        if len(w) < min_frames:
-            continue
-        count += 1
-        seq_dir = os.path.join(out_dir, f"{prefix}_seq{start_idx + count:03d}")
-        os.makedirs(seq_dir, exist_ok=True)
-        for j, c in enumerate(w):
-            cv2.imwrite(os.path.join(seq_dir, f"frame_{j:04d}.jpg"), c)
-    return count
-
-
-def extract_from_video(video_path, label, output_root, yolo_model='yolov8m.pt',
-                       window=20, stride=5, min_frames=15, max_frames=300,
-                       core_len=35):
-    if not os.path.exists(video_path):
-        print(f"  [SKIP] vídeo não encontrado: {video_path}")
-        return 0, 0
-
-    track_crops, frame_count = _collect_track_crops(video_path, yolo_model, max_frames)
-    base = os.path.splitext(os.path.basename(video_path))[0]
-
-    dir_360 = os.path.join(output_root, '360')
-    dir_normal = os.path.join(output_root, 'normal')
-
-    pos_total = 0
-    neg_total = 0
-
-    for tid, crops in sorted(track_crops.items(), key=lambda kv: -len(kv[1])):
-        if len(crops) < min_frames:
-            continue
-
-        if label == '360':
-            # Núcleo de rotação -> positivos; aproximação/saída -> negativos
-            s, e = _find_core(crops, core_len)
-            core = crops[s:e]
-            pre = crops[:s]
-            post = crops[e:]
-
-            pos_total += _save_windows(
-                _slice_windows(core, window, stride, min_frames),
-                dir_360, f"{base}_t{tid}", pos_total, min_frames)
-
-            for run in (pre, post):
-                neg_total += _save_windows(
-                    _slice_windows(run, window, stride, min_frames),
-                    dir_normal, f"{base}_t{tid}_ride", neg_total, min_frames)
-        else:
-            neg_total += _save_windows(
-                _slice_windows(crops, window, stride, min_frames),
-                dir_normal, f"{base}_t{tid}", neg_total, min_frames)
-
-    if label == '360':
-        print(f"  [360] {base}: {frame_count} frames -> {pos_total} seq 360 (giro) + {neg_total} seq normal (pedalada)")
-    else:
-        print(f"  [normal] {base}: {frame_count} frames -> {neg_total} sequências")
-    return pos_total, neg_total
+    print(f"  classe={cls:7s} frames_salvos={saved:4d} -> {out_dir.relative_to(SEQUENCES_DIR.parent)}")
+    if saved == 0:
+        out_dir.rmdir()  # nada detectado, remove pasta vazia
+    return saved
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Extrair sequências de crops de bicicleta de vídeos')
-    parser.add_argument('--label', type=str, required=True, help='Classe (360 ou normal)')
-    parser.add_argument('--videos', type=str, nargs='+', required=True, help='Lista de vídeos')
-    parser.add_argument('--output_root', type=str, default='sequences_dataset')
-    parser.add_argument('--yolo_model', type=str, default='yolov8m.pt')
-    parser.add_argument('--window', type=int, default=20, help='Frames por sequência')
-    parser.add_argument('--stride', type=int, default=5, help='Passo entre janelas')
-    parser.add_argument('--min_frames', type=int, default=15, help='Mínimo de frames por sequência')
-    parser.add_argument('--max_frames', type=int, default=300, help='Máx. frames lidos por vídeo')
-    parser.add_argument('--core_len', type=int, default=35,
-                        help='Tamanho do núcleo de rotação extraído como 360 (frames)')
+    from ultralytics import YOLO
 
-    args = parser.parse_args()
+    print(f"Carregando YOLO ({YOLO_WEIGHTS})...")
+    model = YOLO(YOLO_WEIGHTS)
 
-    print(f"Extraindo sequências da classe '{args.label}' de {len(args.videos)} vídeo(s)...")
-    pos, neg = 0, 0
-    for video in args.videos:
-        p, n = extract_from_video(
-            video, args.label, args.output_root,
-            yolo_model=args.yolo_model, window=args.window, stride=args.stride,
-            min_frames=args.min_frames, max_frames=args.max_frames, core_len=args.core_len)
-        pos += p
-        neg += n
-
-    if args.label == '360':
-        print(f"\nTotal: {pos} sequências 360 (giro) + {neg} sequências normal (pedalada extraídas dos clipes de 360)")
+    if len(sys.argv) > 1:
+        videos = [VIDEOS_DIR / arg for arg in sys.argv[1:]]
     else:
-        print(f"\nTotal de sequências '{args.label}': {neg}")
+        videos = sorted(VIDEOS_DIR.glob("*.mp4"))
+
+    print(f"Processando {len(videos)} video(s)...\n")
+    total = 0
+    for v in videos:
+        if not v.exists():
+            print(f"  [aviso] video nao encontrado: {v}")
+            continue
+        print(f"- {v.name}")
+        total += extract_video(model, v)
+    print(f"\nConcluido. Total de frames recortados: {total}")
 
 
 if __name__ == "__main__":
