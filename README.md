@@ -104,7 +104,7 @@ python predict.py videos/360_estavel.mp4 --out output/resultado.mp4
 | `SPAN`          | 48     | frames de origem cobertos por amostra (=16×3)    |
 | `IMG_SIZE`      | 128    | resolução de cada frame recortado                |
 | `SEQ_CHUNK`     | 90     | divide sequências longas em sub-sequências       |
-| `YOLO_CONF`     | 0.25   | confiança mínima da detecção YOLO                |
+| `YOLO_CONF`     | 0.4   | confiança mínima da detecção YOLO                |
 
 ## Resultados e limitações (importante)
 

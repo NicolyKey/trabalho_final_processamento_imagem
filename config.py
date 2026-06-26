@@ -36,7 +36,7 @@ CHANNELS = 3
 # pegando 1 a cada FRAME_STEP. Isso faz cada amostra abranger a MANOBRA INTEIRA
 # (um 360 leva dezenas de frames), e nao apenas um trecho curto que se parece com
 # pedalada normal. O mesmo span e usado no treino e na inferencia (predict.py).
-FRAME_STEP = 3        # passo de subamostragem dentro de uma amostra
+FRAME_STEP = 2        # passo de subamostragem dentro de uma amostra
 SPAN = SEQ_LEN * FRAME_STEP  # nº de frames de origem cobertos por amostra (=48)
 
 # Janela deslizante entre amostras consecutivas (data augmentation temporal).
@@ -59,7 +59,7 @@ CLASSES = ["360", "normal"]
 # YOLO / deteccao
 # ----------------------------------------------------------------------------
 YOLO_WEIGHTS = "yolov8n.pt"   # baixado automaticamente pela ultralytics se ausente
-YOLO_CONF = 0.25              # confianca minima da deteccao
+YOLO_CONF = 0.4              # confianca minima da deteccao
 # Classes COCO de interesse: 1 = bicycle, 0 = person (ciclista, usado como fallback)
 COCO_BICYCLE = 1
 COCO_PERSON = 0
@@ -70,6 +70,6 @@ CROP_MARGIN = 0.15            # margem extra ao redor da bbox ao recortar (15%)
 # ----------------------------------------------------------------------------
 BATCH_SIZE = 8
 EPOCHS = 40
-LEARNING_RATE = 1e-4
+LEARNING_RATE = 5e-5
 VAL_SPLIT = 0.2       # fracao das sequencias reservada para validacao
 SEED = 42

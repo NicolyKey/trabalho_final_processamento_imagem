@@ -21,11 +21,14 @@ import tensorflow as tf
 from sklearn.utils.class_weight import compute_class_weight
 
 from config import (
-    CLASSES, MODEL_PATH, CLASSES_PATH, HISTORY_PLOT, MODELS_DIR,
-    BATCH_SIZE, EPOCHS, LEARNING_RATE, SEED, SEQ_LEN,
+    CLASSES, FRAME_STEP, IMG_SIZE, MODEL_PATH, CLASSES_PATH, HISTORY_PLOT, MODELS_DIR,
+    BATCH_SIZE, EPOCHS, LEARNING_RATE, SEED, SEQ_LEN, SPAN
 )
 
-FEATURES_CACHE = MODELS_DIR / "features_cache.npz"
+import hashlib, json
+cfg = {"SEQ_LEN": SEQ_LEN, "FRAME_STEP": FRAME_STEP, "IMG_SIZE": IMG_SIZE, "SPAN": SPAN}
+cfg_hash = hashlib.md5(json.dumps(cfg, sort_keys=True).encode()).hexdigest()[:8]
+FEATURES_CACHE = MODELS_DIR / f"features_cache_{cfg_hash}.npz"
 from dataset import split_sequences, load_frame
 from motion_features import sequence_motion, MOTION_DIM
 from model import (
@@ -138,6 +141,14 @@ def main():
             monitor="loss", factor=0.5, patience=5, min_lr=1e-6, verbose=1,
         ),
     ]
+
+    Xa_flip = Xa_tr[:, ::-1, :]
+    Xm_flip = Xm_tr[:, ::-1, :]
+    Xm_flip[:, :, 3] *= -1  # inverte sinal do curl
+
+    Xa_tr = np.concatenate([Xa_tr, Xa_flip], axis=0)
+    Xm_tr = np.concatenate([Xm_tr, Xm_flip], axis=0)
+    y_train = np.concatenate([y_train, y_train], axis=0)
 
     history = head.fit(
         [Xa_tr, Xm_tr], y_train,

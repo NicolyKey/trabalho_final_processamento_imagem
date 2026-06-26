@@ -47,7 +47,7 @@ def per_sequence_features(samples, feature_extractor):
 def train_head(Xa, Xm, y, class_weight, n_classes):
     head = build_temporal_head(n_classes=n_classes)
     head.get_layer("motion_norm").adapt(Xm)
-    head.compile(optimizer=tf.keras.optimizers.Adam(LEARNING_RATE),
+    head.compile(optimizer=tf.keras.optimizers.Adam(1e-4),
                  loss="sparse_categorical_crossentropy", metrics=["accuracy"])
     head.fit([Xa, Xm], y, epochs=EPOCHS, batch_size=BATCH_SIZE,
              class_weight=class_weight, verbose=0,
@@ -90,16 +90,29 @@ def main():
         head = train_head(Xa_tr, Xm_tr, ytr, cw, n_classes)
 
         correct = 0
+        errors  = []
         for i in te_idx:
             Xa, Xm, true = seq_feats[i]
-            probs = head.predict([Xa, Xm], verbose=0).mean(axis=0)  # media das janelas
-            pred = int(np.argmax(probs))
+            probs = head.predict([Xa, Xm], verbose=0).mean(axis=0)
+            pred  = int(np.argmax(probs))
             confusion[true, pred] += 1
             correct += int(pred == true)
+            if pred != true:
+                errors.append(
+                    f"{samples[i].group:35s}  "
+                    f"verdadeiro={CLASSES[true]:6s}  "
+                    f"previsto={CLASSES[pred]:6s}  "
+                    f"conf={float(probs[pred]):.2f}"
+                )
         acc = correct / len(te_idx)
         fold_acc.append(acc)
         print(f"  fold {fold}: {len(tr_idx)} treino / {len(te_idx)} teste -> acc={acc:.3f}")
-
+        if errors:
+            for e in errors:
+                print(f"    ✗ {e}")
+        else:
+            print(f"    ✓ sem erros")
+            
     print(f"\nAcuracia media por sequencia (CV): {np.mean(fold_acc):.3f} "
           f"+/- {np.std(fold_acc):.3f}")
     print("\nMatriz de confusao (linhas=verdadeiro, colunas=previsto):")

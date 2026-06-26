@@ -25,8 +25,7 @@ from config import (
     YOLO_WEIGHTS, YOLO_CONF, COCO_BICYCLE, COCO_PERSON, CROP_MARGIN,
 )
 from extract_sequences import best_detection, crop_with_margin
-from motion_features import _flow_descriptor, FLOW_SIZE, MOTION_DIM
-
+from motion_features import flow_descriptor, FLOW_SIZE, MOTION_DIM
 
 def load_classes():
     if CLASSES_PATH.exists():
@@ -66,6 +65,7 @@ def main():
     # Buffers dos ultimos SPAN recortes; subamostramos 1 a cada FRAME_STEP -> SEQ_LEN.
     window = deque(maxlen=SPAN)      # recortes RGB (IMG_SIZE) para a CNN
     grays = deque(maxlen=SPAN)       # recortes em cinza (FLOW_SIZE) para o fluxo optico
+    pred_buffer = deque(maxlen=5)
     label, conf = "...", 0.0
     frame_idx = 0
 
@@ -82,12 +82,13 @@ def main():
             if crop is not None and crop.size > 0:
                 resized = cv2.resize(crop, (IMG_SIZE, IMG_SIZE))
                 window.append(cv2.cvtColor(resized, cv2.COLOR_BGR2RGB).astype(np.float32))
-                grays.append(cv2.resize(cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY),
-                                        (FLOW_SIZE, FLOW_SIZE)))
+                grays.append(cv2.resize(cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY),
+                                        (FLOW_SIZE, FLOW_SIZE))) 
 
             # Desenha a bbox da bike.
             x1, y1, x2, y2 = map(int, box)
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 200, 0), 2)
+            box_color = (0, 0, 255) if label == "360" else (0, 200, 0)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), box_color, 2)
 
         # Classifica quando o buffer cobre a manobra inteira (SPAN frames).
         if len(window) == SPAN:
@@ -98,14 +99,15 @@ def main():
             # Movimento entre frames subamostrados consecutivos (mesmo passo do treino).
             motion = np.zeros((SEQ_LEN, MOTION_DIM), np.float32)
             for j in range(1, SEQ_LEN):
-                motion[j] = _flow_descriptor(wgrays[(j - 1) * FRAME_STEP],
-                                             wgrays[j * FRAME_STEP])
+                motion[j] = flow_descriptor(wgrays[(j - 1) * FRAME_STEP],
+                                            wgrays[j * FRAME_STEP])
             motion[0] = motion[1]
 
-            probs = model.predict(
-                [clip[None, ...], motion[None, ...]], verbose=0)[0]
-            k = int(np.argmax(probs))
-            label, conf = classes[k], float(probs[k])
+            probs = model.predict([clip[None, ...], motion[None, ...]], verbose=0)[0]
+            pred_buffer.append(probs)
+            probs_smooth = np.mean(pred_buffer, axis=0)
+            k = int(np.argmax(probs_smooth))
+            label, conf = classes[k], float(probs_smooth[k])
 
         # Overlay do rotulo.
         color = (0, 0, 255) if label == "360" else (0, 200, 0)

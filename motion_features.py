@@ -38,7 +38,7 @@ def _gray(path_or_img):
     return cv2.resize(img, (FLOW_SIZE, FLOW_SIZE))
 
 
-def _flow_descriptor(prev_gray, cur_gray):
+def flow_descriptor(prev_gray, cur_gray):
     """Resume o campo de fluxo optico entre dois frames em um vetor MOTION_DIM."""
     flow = cv2.calcOpticalFlowFarneback(
         prev_gray, cur_gray, None,
@@ -77,7 +77,7 @@ def sequence_motion(frame_paths):
     n = len(grays)
     out = np.zeros((n, MOTION_DIM), dtype=np.float32)
     for i in range(FRAME_STEP, n):
-        out[i] = _flow_descriptor(grays[i - FRAME_STEP], grays[i])
+        out[i] = flow_descriptor(grays[i - FRAME_STEP], grays[i])
     # Preenche o inicio repetindo o primeiro descritor valido.
     if n > FRAME_STEP:
         out[:FRAME_STEP] = out[FRAME_STEP]
