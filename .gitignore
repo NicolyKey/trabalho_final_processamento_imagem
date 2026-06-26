@@ -8,7 +8,6 @@ yolov8n.pt
 
 # Saidas do treino e inferencia
 models/
-output/
 
 # Sistema
 .DS_Store
