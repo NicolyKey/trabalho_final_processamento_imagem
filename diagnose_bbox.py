@@ -1,8 +1,3 @@
-"""
-Diagnostico: a TRAJETORIA da bounding box (geometria ao longo do tempo) separa
-360 de normal? Roda YOLO sobre cada video, monta a serie temporal da bbox
-(posicao, tamanho, proporcao) normalizada pelo quadro e testa a separabilidade.
-"""
 import numpy as np
 import cv2
 from sklearn.linear_model import LogisticRegression

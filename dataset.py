@@ -1,25 +1,3 @@
-"""
-Carregamento do dataset de sequencias para o treino.
-
-Estrutura esperada:
-    sequences_dataset/
-        360/    <seq_dir>/ frame_000.jpg, frame_001.jpg, ...
-        normal/ <seq_dir>/ ...
-
-Cada <seq_dir> e uma sequencia ordenada de frames (recortes da bike). Geramos
-amostras de tamanho fixo SEQ_LEN a partir de cada sequencia:
-  - se a sequencia for mais curta que SEQ_LEN -> reamostragem uniforme (com repeticao);
-  - se for >= SEQ_LEN                         -> janelas deslizantes (passo WINDOW_STRIDE).
-
-O split treino/validacao e feito POR SEQUENCIA (nao por janela), de forma
-estratificada por classe, para evitar vazamento de frames quase identicos entre
-treino e validacao.
-
-A funcao principal `split_sequences()` devolve, para cada split, uma lista de
-SequenceSample (frames + janelas de indices + rotulo). O carregamento dos pixels
-e a extracao de features ficam a cargo de train.py (para pre-computar features de
-cada frame uma unica vez).
-"""
 import re
 from dataclasses import dataclass
 from typing import List
@@ -51,15 +29,6 @@ def _natural_key(path):
 
 def _sample_windows(n, seq_len=SEQ_LEN, frame_step=FRAME_STEP,
                     span=SPAN, stride=WINDOW_STRIDE):
-    """
-    Gera amostras de seq_len indices, cada amostra cobrindo `span` frames de
-    origem (1 a cada frame_step). Assim cada amostra abrange a manobra inteira.
-
-    - Se a sequencia for mais curta que `span`: reamostra seq_len frames
-      uniformemente por toda a sequencia (captura o que houver da manobra).
-    - Caso contrario: desliza uma janela de tamanho `span` (passo `stride`) e,
-      dentro dela, pega 1 frame a cada frame_step.
-    """
     if n < span:
         idx = np.linspace(0, n - 1, seq_len).round().astype(int)
         return [idx.tolist()]
@@ -76,7 +45,6 @@ def _sample_windows(n, seq_len=SEQ_LEN, frame_step=FRAME_STEP,
 
 
 def _chunk(frames, chunk):
-    """Divide uma lista longa de frames em pedacos de ate `chunk` frames."""
     if len(frames) <= chunk:
         return [frames]
     n_chunks = round(len(frames) / chunk)
@@ -87,13 +55,6 @@ def _chunk(frames, chunk):
 
 
 def list_sequences() -> List[SequenceSample]:
-    """
-    Varre o dataset e devolve as amostras de sequencia.
-
-    Sequencias longas sao divididas em sub-sequencias (chunks) de ate SEQ_CHUNK
-    frames, cada uma virando uma SequenceSample independente. O `group` guarda o
-    diretorio de origem para a validacao cruzada agrupada.
-    """
     samples = []
     for cls_idx, cls in enumerate(CLASSES):
         cls_dir = SEQUENCES_DIR / cls
@@ -113,11 +74,6 @@ def list_sequences() -> List[SequenceSample]:
 
 
 def split_sequences():
-    """
-    Divide as sequencias em (treino, val), estratificado por classe e AGRUPADO
-    por video de origem (todas as sub-sequencias de um mesmo video ficam do mesmo
-    lado, evitando vazamento de frames quase identicos entre treino e validacao).
-    """
     rng = np.random.default_rng(SEED)
     samples = list_sequences()
     if not samples:
@@ -149,7 +105,6 @@ def split_sequences():
 
 
 def load_frame(path):
-    """Le um frame como RGB float32 no tamanho IMG_SIZE (pixels em [0,255])."""
     img = cv2.imread(str(path))
     if img is None:
         return np.zeros((IMG_SIZE, IMG_SIZE, 3), dtype=np.float32)

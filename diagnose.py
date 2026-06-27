@@ -1,4 +1,3 @@
-"""Diagnostico: as classes sao separaveis nas features? (teto de desempenho)"""
 import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import StratifiedGroupKFold

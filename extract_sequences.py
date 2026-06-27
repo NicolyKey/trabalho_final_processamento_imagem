@@ -1,13 +1,4 @@
 """
-Extracao de sequencias de frames a partir dos videos brutos (videos/).
-
-Usa OpenCV para ler o video e YOLO (ultralytics) para detectar e recortar a
-bicicleta em cada frame. Cada video vira UMA sequencia de frames recortados,
-salva em sequences_dataset/<classe>/<nome_do_video>_seqNNN/.
-
-A classe e inferida pelo nome do arquivo: se contiver "360" -> classe "360",
-caso contrario -> classe "normal".
-
 Uso:
     python extract_sequences.py                 # processa todos os videos de videos/
     python extract_sequences.py 360_estavel.mp4 # processa apenas um video
@@ -22,17 +13,10 @@ from config import (
 
 
 def class_for_video(name: str) -> str:
-    """Define a classe da sequencia a partir do nome do arquivo de video."""
     return "360" if "360" in name.lower() else "normal"
 
 
 def best_detection(result):
-    """
-    Escolhe a melhor deteccao de um frame.
-
-    Prioriza a bicicleta de maior confianca; se nenhuma bicicleta for detectada,
-    cai de volta para a pessoa (ciclista) de maior confianca.
-    """
     boxes = result.boxes
     if boxes is None or len(boxes) == 0:
         return None
@@ -55,7 +39,6 @@ def best_detection(result):
 
 
 def crop_with_margin(frame, box):
-    """Recorta o frame na bbox com uma margem extra, respeitando os limites."""
     h, w = frame.shape[:2]
     x1, y1, x2, y2 = box
     bw, bh = x2 - x1, y2 - y1
@@ -69,7 +52,6 @@ def crop_with_margin(frame, box):
 
 
 def next_seq_index(class_dir, video_stem) -> int:
-    """Proximo indice de sequencia disponivel para um dado video/classe."""
     idx = 1
     while (class_dir / f"{video_stem}_seq{idx:03d}").exists():
         idx += 1

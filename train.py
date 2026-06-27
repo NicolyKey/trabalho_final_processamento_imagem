@@ -1,18 +1,4 @@
 """
-Treino do classificador de manobras CNN-LSTM.
-
-Estrategia (rapida em CPU): como o backbone CNN esta congelado, as features de
-cada frame sao fixas. Entao:
-  1. extraimos as features de cada frame UMA vez (MobileNetV2);
-  2. montamos as janelas de features (SEQ_LEN, 1280);
-  3. treinamos so a cabeca temporal (LSTM) sobre essas features;
-  4. remontamos o modelo completo end-to-end e salvamos para a inferencia.
-
-Salva:
-    models/trick_classifier.keras   -> modelo completo (frames -> classe)
-    models/classes.txt              -> nomes das classes (ordem dos indices)
-    models/training_history.png     -> curvas de loss/accuracy
-
 Uso:
     python train.py
 """
@@ -39,14 +25,7 @@ tf.keras.utils.set_random_seed(SEED)
 
 
 def build_feature_windows(samples, feature_extractor):
-    """
-    Para cada sequencia, extrai as features de APARENCIA (CNN) e de MOVIMENTO
-    (fluxo optico) de seus frames uma unica vez e monta as janelas.
 
-    Devolve (X_app, X_mot, y):
-      X_app: (N, SEQ_LEN, FEATURE_DIM)
-      X_mot: (N, SEQ_LEN, MOTION_DIM)
-    """
     Xa, Xm, y = [], [], []
     for s in samples:
         frames = np.stack([load_frame(p) for p in s.frames], axis=0)        # (n, IMG, IMG, 3)

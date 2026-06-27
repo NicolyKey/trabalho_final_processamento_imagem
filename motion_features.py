@@ -1,16 +1,3 @@
-"""
-Features de MOVIMENTO via fluxo optico (OpenCV / Farneback).
-
-A intuicao: uma manobra de 360 produz movimento ROTACIONAL no campo de fluxo
-optico (a bike/ciclista giram), enquanto pedalar normal produz movimento
-predominantemente TRANSLACIONAL. A rotacao e medida pelo "curl" (vorticidade) do
-campo de fluxo; a translacao pela divergencia/magnitude.
-
-Para cada frame i calculamos o fluxo optico denso entre o frame (i - FRAME_STEP)
-e o frame i (mesma cadencia temporal usada pela LSTM) e resumimos o campo em um
-descritor de MOTION_DIM dimensoes. Assim cada sequencia vira uma serie temporal
-de descritores de movimento, alinhada com os frames usados pelo modelo.
-"""
 import numpy as np
 import cv2
 
@@ -39,7 +26,6 @@ def _gray(path_or_img):
 
 
 def flow_descriptor(prev_gray, cur_gray):
-    """Resume o campo de fluxo optico entre dois frames em um vetor MOTION_DIM."""
     flow = cv2.calcOpticalFlowFarneback(
         prev_gray, cur_gray, None,
         pyr_scale=0.5, levels=3, winsize=15,
@@ -66,13 +52,6 @@ def flow_descriptor(prev_gray, cur_gray):
 
 
 def sequence_motion(frame_paths):
-    """
-    Descritores de movimento de uma sequencia.
-
-    Retorna array (len(frames), MOTION_DIM): a linha i descreve o fluxo do frame
-    (i - FRAME_STEP) ate o frame i. As primeiras FRAME_STEP linhas sao zero
-    (sem frame anterior na cadencia).
-    """
     grays = [_gray(p) for p in frame_paths]
     n = len(grays)
     out = np.zeros((n, MOTION_DIM), dtype=np.float32)

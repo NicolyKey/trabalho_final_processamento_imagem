@@ -1,4 +1,3 @@
-"""Diagnostico: features de MOVIMENTO (fluxo optico) separam 360 de normal?"""
 import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import StratifiedGroupKFold

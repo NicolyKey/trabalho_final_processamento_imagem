@@ -1,15 +1,4 @@
 """
-Avaliacao honesta do classificador com validacao cruzada por SEQUENCIA.
-
-Com poucas sequencias, uma unica divisao treino/val e ruido: o resultado depende
-demais de quais sequencias caem na validacao. Aqui fazemos validacao cruzada
-estratificada k-fold no nivel de SEQUENCIA: em cada fold, algumas sequencias
-inteiras ficam de fora do treino e sao avaliadas por VOTO MAJORITARIO das suas
-janelas. Reportamos a acuracia media e a matriz de confusao agregada.
-
-Isso responde a pergunta real: "dado uma sequencia nova, o modelo acerta a
-manobra?" — e nao "ele acerta janelas de sequencias que ja viu?".
-
 Uso:
     python evaluate.py            # 5 folds (padrao)
     python evaluate.py 4          # k folds
@@ -28,11 +17,6 @@ tf.keras.utils.set_random_seed(SEED)
 
 
 def per_sequence_features(samples, feature_extractor):
-    """
-    Para cada sequencia, devolve (Xa, Xm, label):
-      Xa: janelas de aparencia (n_win, SEQ_LEN, 1280)
-      Xm: janelas de movimento (n_win, SEQ_LEN, MOTION_DIM)
-    """
     out = []
     for s in samples:
         frames = np.stack([load_frame(p) for p in s.frames], axis=0)

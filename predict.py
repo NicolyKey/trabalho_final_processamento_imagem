@@ -1,13 +1,4 @@
 """
-Inferencia: identifica a manobra (360 vs normal) em um video.
-
-Pipeline em tempo de inferencia:
-    OpenCV le o video frame a frame
-    YOLO detecta e recorta a bicicleta em cada frame
-    Mantemos uma janela deslizante dos ultimos SEQ_LEN recortes
-    O CNN-LSTM classifica a janela -> rotulo + confianca
-    OpenCV desenha a bbox e o rotulo e grava o video de saida
-
 Uso:
     python predict.py videos/360_estavel.mp4
     python predict.py videos/360_estavel.mp4 --out output/resultado.mp4
@@ -62,9 +53,8 @@ def main():
     out_path = args.out or str(OUTPUT_DIR / f"pred_{os.path.basename(args.video)}")
     writer = cv2.VideoWriter(out_path, cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
 
-    # Buffers dos ultimos SPAN recortes; subamostramos 1 a cada FRAME_STEP -> SEQ_LEN.
-    window = deque(maxlen=SPAN)      # recortes RGB (IMG_SIZE) para a CNN
-    grays = deque(maxlen=SPAN)       # recortes em cinza (FLOW_SIZE) para o fluxo optico
+    window = deque(maxlen=SPAN)      
+    grays = deque(maxlen=SPAN)    
     pred_buffer = deque(maxlen=5)
     label, conf = "...", 0.0
     frame_idx = 0
@@ -90,13 +80,11 @@ def main():
             box_color = (0, 0, 255) if label == "360" else (0, 200, 0)
             cv2.rectangle(frame, (x1, y1), (x2, y2), box_color, 2)
 
-        # Classifica quando o buffer cobre a manobra inteira (SPAN frames).
         if len(window) == SPAN:
             wcrops = list(window)
             wgrays = list(grays)
             clip = np.stack([wcrops[j * FRAME_STEP] for j in range(SEQ_LEN)], axis=0)
 
-            # Movimento entre frames subamostrados consecutivos (mesmo passo do treino).
             motion = np.zeros((SEQ_LEN, MOTION_DIM), np.float32)
             for j in range(1, SEQ_LEN):
                 motion[j] = flow_descriptor(wgrays[(j - 1) * FRAME_STEP],
@@ -109,7 +97,6 @@ def main():
             k = int(np.argmax(probs_smooth))
             label, conf = classes[k], float(probs_smooth[k])
 
-        # Overlay do rotulo.
         color = (0, 0, 255) if label == "360" else (0, 200, 0)
         text = f"{label} ({conf*100:.0f}%)"
         cv2.rectangle(frame, (0, 0), (360, 40), (0, 0, 0), -1)
